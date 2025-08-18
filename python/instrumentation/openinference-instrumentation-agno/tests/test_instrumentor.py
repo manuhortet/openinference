@@ -5,6 +5,7 @@ import vcr  # type: ignore
 from agno.agent import Agent
 from agno.models.openai.chat import OpenAIChat
 from agno.os import AgentOS
+from agno.os.settings import AgnoAPISettings
 from agno.tools.duckduckgo import DuckDuckGoTools
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -129,6 +130,7 @@ def test_agno_agent_os_instrumentation(
         os_id="test-os-123",
         description="Test AgentOS for instrumentation",
         agents=[agent],
+        settings=AgnoAPISettings(env="dev"),
     )
 
     wrapper = _AgentOSWrapper(tracer=tracer_provider.get_tracer(__name__))
@@ -145,3 +147,7 @@ def test_agno_agent_os_instrumentation(
     assert attributes.get("agno.agent_os.id") == "test-os-123"
     assert attributes.get("agno.agent_os.description") == "Test AgentOS for instrumentation"
     assert attributes.get("agno.agent_os.status") == "online"
+    assert attributes.get("agno.agent_os.env") == "dev"
+    assert attributes.get("agno.agent_os.agent_ids") == (agent.id,)
+    assert attributes.get("agno.agent_os.team_ids") == ()
+    assert attributes.get("agno.agent_os.workflow_ids") == ()
