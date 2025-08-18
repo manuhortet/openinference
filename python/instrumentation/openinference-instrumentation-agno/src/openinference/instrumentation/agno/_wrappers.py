@@ -656,6 +656,32 @@ class _FunctionCallWrapper:
         return response
 
 
+class _AgentOSWrapper:
+    def __init__(self, tracer: trace_api.Tracer) -> None:
+        self._tracer = tracer
+
+    def serve(self, wrapped, instance, args, kwargs):
+        # Extract AgentOS information
+        os_id = getattr(instance, "os_id", "unknown")
+        description = getattr(instance, "description", "")
+
+        # Create a span for the AgentOS going online
+        with self._tracer.start_as_current_span(
+            "agno.agent_os.serve",
+            attributes={"agno.agent_os.id": os_id, "agno.agent_os.description": description},
+        ) as span:
+            try:
+                # Call the original serve method
+                result = wrapped(*args, **kwargs)
+                span.set_attribute("agno.agent_os.status", "online")
+                return result
+
+            except Exception as e:
+                span.set_attribute("agno.agent_os.status", "failed")
+                span.record_exception(e)
+                raise
+
+
 # span attributes
 INPUT_MIME_TYPE = SpanAttributes.INPUT_MIME_TYPE
 INPUT_VALUE = SpanAttributes.INPUT_VALUE
