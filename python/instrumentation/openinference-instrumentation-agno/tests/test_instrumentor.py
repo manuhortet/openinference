@@ -4,6 +4,8 @@ import pytest
 import vcr  # type: ignore
 from agno.agent import Agent
 from agno.models.openai.chat import OpenAIChat
+from agno.os import AgentOS
+from agno.os.settings import AgnoAPISettings
 from agno.tools.duckduckgo import DuckDuckGoTools
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -110,3 +112,42 @@ def test_agno_instrumentation(
             assert attributes.get("llm.provider") == "OpenAI"
             assert span.status.is_ok
     assert checked_spans == 2
+
+
+def test_agno_agent_os_instrumentation(
+    tracer_provider: TracerProvider,
+    in_memory_span_exporter: InMemorySpanExporter,
+    setup_agno_instrumentation: Any,
+) -> None:
+    """Test instrumentatin for the serve method of AgentOS."""
+    from openinference.instrumentation.agno._wrappers import _AgentOSWrapper
+
+    def mock_serve_success(*args, **kwargs):
+        return None
+
+    agent = Agent(name="Test Agent", model=OpenAIChat(id="gpt-4o-mini"))
+    agent_os = AgentOS(
+        os_id="test-os-123",
+        description="Test AgentOS for instrumentation",
+        agents=[agent],
+        settings=AgnoAPISettings(env="dev"),
+    )
+
+    wrapper = _AgentOSWrapper(tracer=tracer_provider.get_tracer(__name__))
+    wrapper.serve(mock_serve_success, agent_os, ("test:app",), {"host": "localhost", "port": 8000})
+
+    spans = in_memory_span_exporter.get_finished_spans()
+    assert len(spans) == 1
+
+    span = spans[0]
+    attributes = dict(span.attributes or {})
+
+    assert span.status.is_ok
+    assert span.name == "agno.agent_os.serve"
+    assert attributes.get("agno.agent_os.id") == "test-os-123"
+    assert attributes.get("agno.agent_os.description") == "Test AgentOS for instrumentation"
+    assert attributes.get("agno.agent_os.status") == "online"
+    assert attributes.get("agno.agent_os.env") == "dev"
+    assert attributes.get("agno.agent_os.agent_ids") == (agent.id,)
+    assert attributes.get("agno.agent_os.team_ids") == ()
+    assert attributes.get("agno.agent_os.workflow_ids") == ()

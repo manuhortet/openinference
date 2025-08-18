@@ -656,6 +656,45 @@ class _FunctionCallWrapper:
         return response
 
 
+class _AgentOSWrapper:
+    def __init__(self, tracer: trace_api.Tracer) -> None:
+        self._tracer = tracer
+
+    def serve(self, wrapped, instance, args, kwargs):
+        # Extract AgentOS information
+        os_id = getattr(instance, "os_id", "")
+        description = getattr(instance, "description", "")
+        settings = getattr(instance, "settings", None)
+        env = settings.env if settings else ""
+
+        agent_ids = [i.id for i in instance.agents] if instance.agents else []
+        team_ids = [i.id for i in instance.teams] if instance.teams else []
+        workflow_ids = [i.id for i in instance.workflows] if instance.workflows else []
+
+        # Create a span for the AgentOS going online
+        with self._tracer.start_as_current_span(
+            "agno.agent_os.serve",
+            attributes={
+                "agno.agent_os.id": os_id,
+                "agno.agent_os.description": description,
+                "agno.agent_os.agent_ids": agent_ids,
+                "agno.agent_os.team_ids": team_ids,
+                "agno.agent_os.workflow_ids": workflow_ids,
+                "agno.agent_os.env": env,
+            },
+        ) as span:
+            try:
+                # Call the original serve method
+                result = wrapped(*args, **kwargs)
+                span.set_attribute("agno.agent_os.status", "online")
+                return result
+
+            except Exception as e:
+                span.set_attribute("agno.agent_os.status", "failed")
+                span.record_exception(e)
+                raise
+
+
 # span attributes
 INPUT_MIME_TYPE = SpanAttributes.INPUT_MIME_TYPE
 INPUT_VALUE = SpanAttributes.INPUT_VALUE

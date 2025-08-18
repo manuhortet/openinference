@@ -9,6 +9,7 @@ from openinference.instrumentation import (
     TraceConfig,
 )
 from openinference.instrumentation.agno._wrappers import (
+    _AgentOSWrapper,
     _FunctionCallWrapper,
     _ModelWrapper,
     _RunWrapper,
@@ -79,6 +80,7 @@ class AgnoInstrumentor(BaseInstrumentor):  # type: ignore
         "_original_function_execute_method",
         "_original_function_aexecute_method",
         "_original_model_call_methods",
+        "_original_agent_os_serve_method",
         "_tracer",
     )
 
@@ -87,6 +89,7 @@ class AgnoInstrumentor(BaseInstrumentor):  # type: ignore
 
     def _instrument(self, **kwargs: Any) -> None:
         from agno.agent import Agent
+        from agno.os import AgentOS
         from agno.team import Team
         from agno.tools.function import FunctionCall
 
@@ -209,8 +212,17 @@ class AgnoInstrumentor(BaseInstrumentor):  # type: ignore
             wrapper=function_call_wrapper.arun,
         )
 
+        agent_os_wrapper = _AgentOSWrapper(tracer=self._tracer)
+        self._original_agent_os_serve_method = getattr(AgentOS, "serve", None)
+        wrap_function_wrapper(
+            module=AgentOS,
+            name="serve",
+            wrapper=agent_os_wrapper.serve,
+        )
+
     def _uninstrument(self, **kwargs: Any) -> None:
         from agno.agent import Agent
+        from agno.os import AgentOS
         from agno.team import Team
         from agno.tools.function import FunctionCall
 
@@ -246,3 +258,7 @@ class AgnoInstrumentor(BaseInstrumentor):  # type: ignore
         if self._original_function_aexecute_method is not None:
             FunctionCall.aexecute = self._original_function_aexecute_method  # type: ignore[method-assign]
             self._original_function_aexecute_method = None
+
+        if self._original_agent_os_serve_method is not None:
+            AgentOS.serve = self._original_agent_os_serve_method  # type: ignore[method-assign]
+            self._original_agent_os_serve_method = None
